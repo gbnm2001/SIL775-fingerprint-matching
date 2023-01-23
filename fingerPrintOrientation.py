@@ -1,6 +1,7 @@
 from preprocessing import *
 import cv2
 from math import sin,cos,atan2
+from threading import Thread
 
 I = plt.imread("fingerprints/DB_1/105_3.tif")
 Ip = getPreprocessedImage(I)
@@ -28,6 +29,27 @@ def plotField(theta_arr, block_size=10):
     showArr(out)
     return
 
+def plotMinutia(thin_image,minutiae,block_size=10):
+    out = np.zeros(thin_image.shape)
+    (nr,nc) = out.shape
+    for i in minutiae:
+        r = i[0]
+        c = i[1]
+        theta = i[2]
+        (x1,y1) = (int(r+block_size/2*(1+cos(theta))), int(c + block_size/2*(1+sin(theta))) )
+        (x2,y2) = (int(r+block_size/2*(1-cos(theta))), int(c + block_size/2*(1-sin(theta))) )
+        x2 = max(0,min(x2,nr-1))
+        y2 = max(0,min(y2,nc-1))
+        x1 = max(0,min(x1,nr-1))
+        y1 = max(0,min(y1,nc-1))
+        out[r][c]=128
+        out[x1][y1] = 50
+        out[x2][y2] = 50
+        out[(x1+x2)//2][(y1+y2)//2] = 50
+        out[int(0.25*x1+0.75*x2)][int(0.25*y1+0.75*y2)] = 50
+        out[int(0.25*x2+0.75*x1)][int(0.25*y2+0.75*y1)] = 50
+    showArr(out)
+
 def ridge_orientation_field(normalized_image,block_size=10):
     scale,delta=1,0
     grad_x = cv2.Sobel(normalized_image, cv2.CV_64F, 0, 1, ksize=3,scale=scale, delta=delta, borderType=cv2.BORDER_DEFAULT)
@@ -48,9 +70,30 @@ def ridge_orientation_field(normalized_image,block_size=10):
     #print(thetas)
     return thetas
 
-In = enhancement( normalization(segmentation(plt.imread("fingerprints/DB_1/101_3.tif"))))
-showArr(In)
-a = ridge_orientation_field(In)
-plotField(a)
+class ThreadWithReturn(Thread):
+    
+    def __init__(self, group=None, target=None, name=None,
+                 args=(), kwargs={}, Verbose=None):
+        Thread.__init__(self, group, target, name, args, kwargs)
+        self._return = None
 
+    def run(self):
+        if self._target is not None:
+            self._return = self._target(*self._args,**self._kwargs)
+    def join(self, *args):
+        Thread.join(self, *args)
+        return self._return
+
+def getMinutiae(image_path):
+    Ie = enhancement(normalization(segmentation(segmentation(plt.imread(image_path)))))[10:-10,10:-10]
+    thetas = ridge_orientation_field(np.float64(numpyInvert(Ie)))
+    #plotField(thetas)
+    #It = getPreprocessedImage(plt.imread("fingerprints/DB_1/101_3.tif"))
+    binarization(Ie)
+    It = numpyInvert(thinning(Ie))
+    #showArr(It)
+    minutiae = minutiaeExtraction(It, thetas,10)
+    #plotMinutia(It,minutiae,10)
+    return minutiae
+    
 
