@@ -2,17 +2,14 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image as im
+from PIL import ImageDraw
 import fingerprint_enhancer
 from skimage import morphology
 
-def getMean(image_arr):
-    pass
 
-def getVariance(image_arr,):
-    pass
 
 #1
-def segmentation(image_arr, block_size = 10):
+def segmentation(image_arr, block_size = 5):
     '''
     CALCULATE variance in w*w windows
     delete the border blocks with variance less than threshold (0.1*total_variance)
@@ -25,7 +22,7 @@ def segmentation(image_arr, block_size = 10):
     top = 0
     w = block_size
     #get total vairance
-    varTh = np.var(image_arr)*0.1
+    varTh = np.var(image_arr)*0.3
 
     #iterate w*w blocks
     for r in range(0,nr//w):
@@ -119,9 +116,16 @@ def invert(x):
 numpyInvert = np.vectorize(invert)
 
 
-def showArr(image_arr):
+def showArr(image_arr, name, points = []):
     image = im.fromarray(image_arr)
-    image.show()
+    rgbimg = im.new("RGBA", image.size)
+    rgbimg.paste(image)
+    draw = ImageDraw.Draw(rgbimg)
+    for point in points:
+        print('point',point)
+        draw.rectangle((point[1],point[0],point[1]+5,point[0]+5), fill= (255,0,0,128))
+    rgbimg.show()
+    
 
 def getPreprocessedImage(image_arr):
     #I = plt.imread("fingerprints/DB_1/105_3.tif")
@@ -133,7 +137,9 @@ def getPreprocessedImage(image_arr):
     return It
 
 def saveImage(image_arr):
-    np.set_printoptions(threshold=np.inf)
+    f = open('arr.txt','w+')
+    f.write(str(image_arr))
+    f.close()
 
 
 def minutiaeExtraction(thin_image, thetas, block_size=10):
@@ -148,22 +154,12 @@ def minutiaeExtraction(thin_image, thetas, block_size=10):
                 for j in range(3):
                     if(thin_image[r+i][c+j] < 10):
                         count+=1
-            if(292<r<294 and 117<c<119):
-                print(r,c,count)
-            r1 = max(0,min(round((r+1)/10)*10,nr-1))
-            c1 = max(0,min(round((c+1)/10)*10,nc-1))
-            theta = thetas[r1][c1]
+            theta = thetas[r][c]
             if(thin_image[r+1][c+1]==0 and count == 2):
                 ridgeEndings.append((r+1,c+1,theta))
             elif(thin_image[r+1][c+1]==0 and count>=4):
                 bifurcationPts.append((r+1,c+1,theta))
-    # x=295
-    # y=120
-    # bifurcationPts.append((x,y,1.57))
-    # bifurcationPts.append((x,y,0))
-    # bifurcationPts.append((x+1,y+1,1.57))
-    # bifurcationPts.append((x+1,y+1,0))
-    #remove noisy minutiae
+
     minutiaRemoval(thin_image,ridgeEndings, bifurcationPts)
     return ridgeEndings+bifurcationPts
 
@@ -297,17 +293,13 @@ def minutiaRemoval(thin_image, ends, bifurs):
     D3 = 10
     (nr,nc) = thin_image.shape
     boundaryRemoval(ends,bifurs,thin_image.shape,B)
-    print('ends len = ',len(ends),'bifurs len = ', len(bifurs))
     removeCluster(ends,bifurs, thin_image.shape[0], thin_image.shape[1], D0)
-    print('ends len = ',len(ends),'bifurs len = ', len(bifurs))
     nearEndPtsRemoval(ends, D1)
     nearEndBifurRemoval(ends, bifurs, D2)
     nearBifurRemoval(bifurs,D3)
-    print('ends len = ',len(ends),'bifurs len = ', len(bifurs))
+    print('no. ends = ',len(ends),'no. bifurcations = ', len(bifurs))
     
     return
 
 
     
-
-#showArr(getPreprocessedImage(plt.imread("fingerprints/DB_1/101_3.tif")))
