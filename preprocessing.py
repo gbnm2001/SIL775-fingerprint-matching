@@ -27,18 +27,7 @@ def segmentation(image_arr, block_size = 5):
     #iterate w*w blocks
     for r in range(0,nr//w):
         for c in range(0,nc//w):
-            #caclulate mean in that region
-            avg = 0
-            for r1 in range(r*w, (r+1)*w):
-                for c1 in range(c*w, (c+1)*w):
-                    avg += image_arr[r1][c1]
-            avg = avg/(w**2)
-            #calculate the variance
-            V=0
-            for r1 in range(r*w, (r+1)*w):
-                for c1 in range(c*w, (c+1)*w):
-                    V += (image_arr[r1][c1]-avg)**2
-            V = V/(w**2)
+            V = np.var(image_arr[r*w:(r+1)*w,c*w:(c+1)*w])#V/(w**2)
             if(V>=varTh):
                 left = min(left, c*w)
                 right = max(right, (c+1)*w)
@@ -73,13 +62,6 @@ def enhancement(image_arr):
     '''
     RIDGE JOINING
     GABOR filter
-    opencv has gabor filter
-    theta = pi/4
-    lambda = pi/4
-    ksize = TBD
-    sigma = 5
-    gamma = 0.9
-    phi = 0
     '''
     return fingerprint_enhancer.enhance_Fingerprint(image_arr)
 
@@ -89,21 +71,13 @@ def binarization(image_arr):
     CONVERT GRAYSCALE TO BINARY IMAGE
     requires Otsu's thresholding
     '''
-    (nr,nc) = image_arr.shape
-    for r in range(nr):
-        for c in range(nc):
-            if(image_arr[r][c] >128):
-                image_arr[r][c] = 255
-            else:
-                image_arr[r][c] = 0
+    _,image_arr = cv2.threshold(image_arr,128,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
     return image_arr
 
 def thinning(image_arr):
     '''
     REDUCE THE THICKNESS OF RIDGES TO ONE PIXEL
-    CAN USE cv2 or maholas depending on the correctness
     '''
-
     thinned =  morphology.thin(image_arr)#np.where(skeletonize(image_arr//255), 0.0, 1.0)
     return thinned
 
@@ -122,9 +96,8 @@ def showArr(image_arr, name, points = []):
     rgbimg.paste(image)
     draw = ImageDraw.Draw(rgbimg)
     for point in points:
-        print('point',point)
         draw.rectangle((point[1],point[0],point[1]+5,point[0]+5), fill= (255,0,0,128))
-    rgbimg.show()
+    rgbimg.show(title=name)
     
 
 def getPreprocessedImage(image_arr):
