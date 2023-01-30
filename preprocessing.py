@@ -90,13 +90,21 @@ def invert(x):
 numpyInvert = np.vectorize(invert)
 
 
-def showArr(image_arr, name, points = []):
+def showArr(image_arr, name, points = [], points2 = []):
     image = im.fromarray(image_arr)
     rgbimg = im.new("RGBA", image.size)
     rgbimg.paste(image)
     draw = ImageDraw.Draw(rgbimg)
     for point in points:
-        draw.rectangle((point[1],point[0],point[1]+5,point[0]+5), fill= (255,0,0,128))
+        try:
+            draw.rectangle((point[1],point[0],point[1]+5,point[0]+5), fill= (255,0,0,128))
+        except:
+            pass
+    for point in points2:
+        try:
+            draw.rectangle((point[1],point[0],point[1]+5,point[0]+5), fill= (0,0,255,128))
+        except:
+            pass
     rgbimg.show(title=name)
     
 

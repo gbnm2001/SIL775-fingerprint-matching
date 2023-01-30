@@ -3,8 +3,10 @@ from preprocessing import *
 from fingerPrintOrientation import *
 from geneticalgorithm import geneticalgorithm as ga
 import math
-from fingerprint_feature_extractor import extract_minutiae_features
-
+#from fingerprint_feature_extractor import extract_minutiae_features
+from joblib import Parallel, delayed
+import time
+import random
 imagecount = 0
 def convert(map):
     M = []
@@ -45,9 +47,9 @@ def pairing(minutia1, minutia2, dist_thresh, theta_thresh, change, match_ratio=0
                     f2[j]=True
     print('matching points ', count)
     if(count > match_ratio*min(n,m)):#80% of template
-        return True
+        return (True,count/min(n,m))
     else:
-        return False
+        return (False,count/min(n,m))
 
 
 ################HOUGH TRANSFORM MARTCHING
@@ -81,7 +83,11 @@ def houghTransform(minutia1, minutia2):
 
     
 
-
+def transformedMinutiae(M, transform_vals):
+    m1 = []
+    for i in M:
+        m1.append(transform(i,transform_vals))
+    return m1
 
 def houghMatching(path1, path2, dist_thresh=20, theta_thresh=20, match_ratio=0.1):
     print('Running hough matching')
@@ -89,11 +95,23 @@ def houghMatching(path1, path2, dist_thresh=20, theta_thresh=20, match_ratio=0.1
     t1.start()
     t2 = ThreadWithReturn(target=getMinutiae, args=(path2,))
     t2.start()
+
+    ###TO SHOW
+    Ie1 = enhancement(normalization(segmentation(plt.imread(path1))))[10:-10,10:-10]
+    Ie2 = enhancement(normalization(segmentation(plt.imread(path2))))[10:-10,10:-10]
+    binarization(Ie1)
+    binarization(Ie2)
+    th1 = numpyInvert(thinning(Ie1))
+    th2 = numpyInvert(thinning(Ie2))
+    ###
+
     M1=t1.join()
     M2=t2.join()
-
+    showArr(th1, 'F1', M1)
+    showArr(th2, 'F2', M2)
     delta = houghTransform(M1, M2)
     delta = (delta[0],delta[1],delta[2],1)
+    showArr(th2, 'F1 tranformed to F2',M2, transformedMinutiae(M1, delta))
     res = pairing(M1, M2, dist_thresh, theta_thresh, delta,match_ratio)
     print('HOUGH MATCH = ',res)
     return res
@@ -102,7 +120,7 @@ def houghMatching(path1, path2, dist_thresh=20, theta_thresh=20, match_ratio=0.1
 
 
 ################################GENETIC ALGORITHM MATCHING
-def costFunction(solution,M1,M2):
+def costFunction(solution,M1,M2,dt=20):
     n1 = len(M1)
     n2 = len(M2)
     total_dist_s = 0
@@ -111,17 +129,19 @@ def costFunction(solution,M1,M2):
             dj = float('inf')
             for k in range(n2):
                 dj = min(dj, dist(transform(M1[j], solution), M2[k]))
-            total_dist_s +=dj**2
+            if(dj<dt):
+                total_dist_s -=1
         return total_dist_s
     else:
         for j in range(n2):
             dj = float('inf')
             for k in range(n1):
                 dj = min(dj, dist(transform(M1[k], solution), M2[j]))
-            total_dist_s +=dj**2
+            if(dj<dt):
+                total_dist_s -=1
         return total_dist_s
 
-def geneticAlogorithm(path1, path2, dt=20,tt=20, match_ratio=0.25):
+def geneticAlgorithm(path1, path2, dt=20,tt=20, match_ratio=0.25):
     print('Running genetic algorithm')
     #img = plt.imread(path1)
     #ends, bifurs = extract_minutiae_features(img, spuriousMinutiaeThresh=10, invertImage=False, showResult=True)
@@ -130,6 +150,16 @@ def geneticAlogorithm(path1, path2, dt=20,tt=20, match_ratio=0.25):
     t1.start()
     t2 = ThreadWithReturn(target=getMinutiae, args=(path2,))
     t2.start()
+
+    ###TO SHOW
+    # Ie1 = enhancement(normalization(segmentation(plt.imread(path1))))[10:-10,10:-10]
+    # Ie2 = enhancement(normalization(segmentation(plt.imread(path2))))[10:-10,10:-10]
+    # binarization(Ie1)
+    # binarization(Ie2)
+    # th1 = numpyInvert(thinning(Ie1))
+    # th2 = numpyInvert(thinning(Ie2))
+    ###
+
     M1=t1.join()
     M2=t2.join()
     varbound=np.array([[-100,100],[-100,100],[-30,30],[0.98,1.02]])
@@ -144,10 +174,16 @@ def geneticAlogorithm(path1, path2, dt=20,tt=20, match_ratio=0.25):
                     'max_iteration_without_improv':None}
     model=ga(function= lambda x: costFunction(x, M1,M2),dimension=4,
     variable_type_mixed=vartype,variable_boundaries=varbound,
-    algorithm_parameters=algorithm_param, convergence_curve=False)
+    algorithm_parameters=algorithm_param, convergence_curve=False, progress_bar=False)
 
     model.run()
     delta = model.output_dict
+
+    ##TO SHOW
+    # showArr(th1, 'F1', M1)
+    # showArr(th2, 'F2', M2)
+    # showArr(th2, 'F1 tranformed to F2',M2, transformedMinutiae(M1, delta['variable']))
+
     res = pairing(M1, M2, dt, tt, delta['variable'],match_ratio)
     print('GENETIC ALGORITHM MATCH = ', res)
     return res
@@ -256,13 +292,61 @@ def corePointMatching(imagepath1, imagepath2, dist_thresh=20, theta_thresh=20, m
     # showArr(It2,'Thinned 2',M2)
     res = pairing(M1, M2, dist_thresh, theta_thresh, trans,match_ratio)
     print('CORE POINT MATCH = ', res)
+    return res
 
 
-p1 = "fingerprints/DB1_B/103_1.tif"
-p2 = "fingerprints/DB1_B/103_2.tif"
+base = 'fingerprints/DB1_B/'
 
-houghMatching(p1, p2, 20,20,0.08)
+p1 = "fingerprints/DB1_B/104_1.tif"
+p2 = "fingerprints/DB1_B/104_3.tif"
 
-geneticAlogorithm(p1, p2, 20,20,0.20)
+#houghMatching(p1, p2, 20,20,0.08)
 
-corePointMatching(p1,p2,20,20,0.08)
+#geneticAlgorithm(p1, p2, 20,20,0.20)
+#Parallel(n_jobs=2)(delayed(geneticAlgorithm)(base+f'{104}_{1}.tif', base+f'{104}_{j}.tif', 20,20,0.20) for j in range(2,9))
+#corePointMatching(p1,p2,20,20,0.08)
+
+def checkPositives(algo = 'GA'):
+    fo = open('TP.txt','w+')
+    base = 'fingerprints/DB1_B/'
+    start = time.time()
+    for f in range(101,111):
+        for i in range(1,8):
+            l = [j for j in range(i+1,9) if j!=i]
+            test =[]
+            if(algo == 'GA'):
+                test = Parallel(n_jobs=4)(delayed(geneticAlgorithm)(base+f'{f}_{i}.tif', base+f'{f}_{j}.tif', 20,20,0.20) for j in l)
+            elif(algo == 'CP'):
+                test = Parallel(n_jobs=4)(delayed(houghMatching)(base+f'{f}_{i}.tif', base+f'{f}_{j}.tif', 20,20,0.08) for j in l)
+            elif(algo=='HT'):
+                test = Parallel(n_jobs=4)(delayed(corePointMatching)(base+f'{f}_{i}.tif', base+f'{f}_{j}.tif', 20,20,0.08) for j in l)
+            c=0
+            for j in l:
+                fo.write(f'{f}_{i},{f}_{j},{test[c]}\n')
+                c+=1
+    print('TOTAL TIME = ',time.time()-start)
+
+checkPositives()
+
+def checkNegatives(algo = 'GA'):
+    fo = open('negatives.txt','w+')
+    base = 'fingerprints/DB1_B/'
+    start = time.time()
+    random.seed(0)
+    random_pairs = []
+    while(len(random_pairs)<280):
+        one = random.randint(101,110)
+        two = random.randint(101,110)
+        if(one!=two):
+            random_pairs.append((f'{one}_{random.randint(1,8)}', f'{two}_{random.randint(1,8)}'))
+
+    test =[]
+    if(algo == 'GA'):
+        test = Parallel(n_jobs=4)(delayed(geneticAlgorithm)(base+f'{case[0]}.tif', base+f'{case[1]}.tif', 20,20,0.20) for case in random_pairs)
+    elif(algo == 'CP'):
+        test = Parallel(n_jobs=4)(delayed(houghMatching)(base+f'{case[0]}.tif', base+f'{case[1]}.tif', 20,20,0.08) for case in random_pairs)
+    elif(algo=='HT'):
+        test = Parallel(n_jobs=4)(delayed(corePointMatching)(base+f'{case[0]}.tif', base+f'{case[1]}.tif', 20,20,0.08) for case in random_pairs)
+    for j in range(len(random_pairs)):
+        fo.write(f'{random_pairs[j][0]},f{random_pairs[j][1]},{test[j]}\n')
+    print('TOTAL TIME = ',time.time()-start)
